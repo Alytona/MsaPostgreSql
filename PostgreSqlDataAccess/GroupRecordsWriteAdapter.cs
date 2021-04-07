@@ -7,30 +7,179 @@ using System.Threading.Tasks;
 
 namespace PostgreSqlDataAccess
 {
-    public abstract class GroupRecordsWriteAdapter : IDisposable
+    /// <summary>
+    /// Потокобезопасный счетчик остатка для буфера записи
+    /// </summary>
+    class ThreadSafeCounter
     {
-        readonly AGroupRecordsWriter[] Writers;
-        readonly uint WritersQuantity;
+        readonly object ValueLock = new object();
 
-        List<ParameterEvent> Events = new List<ParameterEvent>();
-        readonly object EventsLock = new object();
+        public uint _value;
 
-        public delegate void StoredEventHandler (uint storedCount, List<Exception> errors);
-        public event StoredEventHandler OnStored;
+        public uint Value
+        {
+            get {
+                lock (ValueLock) { return _value; }
+            }
+            set {
+                lock (ValueLock) { _value = value; }
+            }
+        }
+        public void subtract (uint quantity)
+        {
+            lock (ValueLock) { 
+                _value -= quantity; 
+            }
+        }
+        public void add (uint quantity)
+        {
+            lock (ValueLock)
+            {
+                _value += quantity;
+            }
+        }
+    }
 
-        //Task<uint> StoreTask = null;
-        //readonly object WritesLock = new object();
+    /// <summary>
+    /// Потокобезопасный буфер, в котором события накапливаются перед записью
+    /// </summary>
+    class EventsPrepareBuffer
+    {
+        List<ParameterEvent> _events = new List<ParameterEvent>();
+        readonly object _eventsLock = new object();
 
+        public uint Length
+        {
+            get
+            {
+                lock (_eventsLock)
+                {
+                    return (uint)_events.Count;
+                }
+            }
+        }
+        public List<ParameterEvent> replaceBufferIfNotEmpty ()
+        {
+            lock (_eventsLock)
+            {
+                if (_events.Count == 0)
+                    return null;
+
+                List<ParameterEvent> eventsToStore = _events;
+                _events = new List<ParameterEvent>();
+                return eventsToStore;
+            }
+        }
+        public void addEvents (List<ParameterEvent> eventsToStore)
+        {
+            lock (_eventsLock)
+            {
+                _events.AddRange( eventsToStore );
+            }
+        }
+    }
+
+    class StoreThread
+    {
         enum StoreThreadStates
         {
             Working,
             Terminating,
             Terminated
         }
+        StoreThreadStates _storeThreadState;
 
-        readonly Thread StoreThread;
-        StoreThreadStates StoreThreadState;
-        readonly object StoreThreadStateLock = new object();
+        readonly Thread _storeThread;
+        readonly object _storeThreadStateLock = new object();
+
+        readonly ThreadStart _storeLogic;
+
+        public StoreThread (ThreadStart storeLogic)
+        {
+            _storeLogic = storeLogic;
+
+            _storeThreadState = StoreThreadStates.Working;
+            _storeThread = new Thread( threadMethod );
+            _storeThread.Priority = ThreadPriority.BelowNormal;
+        }
+
+        public void start ()
+        {
+            _storeThread.Start();
+        }
+        public void terminate ()
+        {
+            lock (_storeThreadStateLock)
+            {
+                _storeThreadState = StoreThreadStates.Terminating;
+            }
+        }
+        public void waitForTermination ()
+        {
+            _storeThread.Join();
+
+            //if (!StoreThread.Join( 5000 )) {
+            //    StoreThread.Abort();
+            //}
+        }
+
+        void threadMethod ()
+        {
+            StoreThreadStates threadState;
+            do
+            {
+                _storeLogic.Invoke();
+
+                lock (_storeThreadStateLock)
+                {
+                    threadState = _storeThreadState;
+                }
+            }
+            while (threadState == StoreThreadStates.Working);
+            lock (_storeThreadStateLock)
+            {
+                _storeThreadState = StoreThreadStates.Terminated;
+            }
+        }
+    }
+
+    public abstract class GroupRecordsWriteAdapter : IDisposable
+    {
+        /// <summary>
+        /// 
+        /// </summary>
+        readonly AGroupRecordsWriter[] Writers;
+        readonly uint WritersQuantity;
+
+        /// <summary>
+        /// Обработчик окончания добавления внутреннего буфера в БД
+        /// </summary>
+        /// <param name="storedCount">Количество добавленных в БД записей</param>
+        /// <param name="errors">Список ошибок, возникших при добавлении</param>
+        public delegate void StoredEventHandler (uint storedCount, List<Exception> errors);
+
+        /// <summary>
+        /// Событие, которое вызывается после записи всего внутреннего буфера для передачи количества записей, 
+        /// добавленных в БД и списка ошибок.
+        /// </summary>
+        public event StoredEventHandler OnStored;
+
+        bool _storing;
+        readonly object StoringLock = new object();
+        bool Storing
+        {
+            get {
+                lock (StoringLock) { return _storing; }
+            }
+            set {
+                lock (StoringLock) { _storing = value; }
+            }
+        }
+
+        readonly StoreThread _storingThread;
+        readonly ThreadSafeCounter BufferRemainderCounter = new ThreadSafeCounter();
+        readonly ThreadSafeCounter ErrorsCounter = new ThreadSafeCounter();
+        readonly EventsPrepareBuffer PrepareBuffer = new EventsPrepareBuffer();
 
         protected GroupRecordsWriteAdapter (string connectionString, uint writersQuantity, uint insertSize, uint transactionSize)
         {
@@ -39,44 +188,29 @@ namespace PostgreSqlDataAccess
             for (int i = 0; i < WritersQuantity; i++)
             {
                 Writers[i] = createWriter( connectionString, insertSize, transactionSize );
+                Writers[i].OnStored += BufferRemainderCounter.subtract;
+                Writers[i].OnError += ErrorsCounter.add;
             }
 
-            StoreThreadState = StoreThreadStates.Working;
-            StoreThread = new Thread ( new ThreadStart( storing ) );
-            StoreThread.Start();
+            _storingThread = new StoreThread( storingIteration );
+            _storingThread.start();
         }
 
-        void storing ()
+        void storingIteration ()
         {
-            StoreThreadStates threadState;
-            do {
+            List<ParameterEvent> eventsToStore = PrepareBuffer.replaceBufferIfNotEmpty();
+            if (eventsToStore != null)
+            {
+                BufferRemainderCounter.Value = (uint)eventsToStore.Count;
+                List<Exception> errors = new List<Exception>();
+                uint insertedCount = storeEventsTask( eventsToStore, errors );
+                OnStored?.Invoke( insertedCount, errors );
 
-                List<ParameterEvent> eventsToStore = null;
-                lock (EventsLock) 
-                {
-                    if (Events.Count > 0) {
-                        eventsToStore = Events;
-                        Events = new List<ParameterEvent>();
-                    }
-                }
-                if (eventsToStore != null)
-                {
-                    List<Exception> errors = new List<Exception>();
-                    uint insertedCount = storeEventsTask( eventsToStore, errors );
-                    OnStored?.Invoke( insertedCount, errors );
-                }
-                else {
-                    Thread.Sleep( 50 );
-                }
-
-                lock (StoreThreadStateLock) {
-                    threadState = StoreThreadState;
-                }
+                if (BufferRemainderCounter.Value != 0)
+                    Console.WriteLine( "BufferRemainderCounter.Remainder: " + BufferRemainderCounter.Value );
             }
-            while (threadState == StoreThreadStates.Working);
-
-            lock (StoreThreadStateLock) {
-                StoreThreadState = StoreThreadStates.Terminated;
+            else {
+                Thread.Sleep( 50 );
             }
         }
 
@@ -84,48 +218,19 @@ namespace PostgreSqlDataAccess
 
         public uint GetQueueLength ()
         {
-            lock (EventsLock) {
-                return (uint)Events.Count;
-            }
+            return PrepareBuffer.Length + BufferRemainderCounter.Value - ErrorsCounter.Value;
         }
-
         public void StoreEvents (List<ParameterEvent> eventsToStore)
         {
-            lock (EventsLock) 
-            {
-                Events.AddRange( eventsToStore );
-            }
+            PrepareBuffer.addEvents( eventsToStore );
         }
 
-        //public uint StoreEvents (List<ParameterEvent> eventsToStore, List<Exception> errors)
-        //{
-        //    return storeEventsTask( eventsToStore, errors );
-        //}
-
-        //public void BeginStoreEvents (List<ParameterEvent> eventsToStore)
-        //{
-        //    lock (WritesLock)
-        //    {
-        //        StoreTask = Task<uint>.Run( () =>
-        //        {
-        //            List<Exception> errors = new List<Exception>();
-        //            uint insertedCount = storeEventsTask( eventsToStore, errors );
-        //            OnStored( insertedCount, errors );
-        //            return insertedCount;
-        //        } );
-        //    }
-        //}
-        //public uint EndStoreEvents ()
-        //{
-        //    uint result = 0;
-        //    if (StoreTask != null) 
-        //    {
-        //        StoreTask.Wait();
-        //        result = StoreTask.Result;
-        //        StoreTask = null;
-        //    }
-        //    return result;
-        //}
+        public void WaitForStoring ()
+        {
+            while (Storing) {
+                Thread.Sleep( 50 );
+            }
+        }
 
         uint storeEventsTask (List<ParameterEvent> eventsToStore, List<Exception> errors)
         {
@@ -139,6 +244,7 @@ namespace PostgreSqlDataAccess
             List<Task<uint>> tasks = new List<Task<uint>>();
             try
             {
+                Storing = true;
                 for (int i = 0; i < WritersQuantity; i++)
                 {
                     uint quantity = baseQuantityPerWriter;
@@ -166,6 +272,9 @@ namespace PostgreSqlDataAccess
                         errors.Add( task.Exception );
                 }
             }
+            finally {
+                Storing = false;
+            }
             return insertedCount;
         }
 
@@ -174,7 +283,15 @@ namespace PostgreSqlDataAccess
             IList<IGroupInsertableRecord> eventsToStoreA = eventsToStore.Cast<IGroupInsertableRecord>().ToList();
 
             Task <uint> task = Task.Run( () => {
-                return writer.storeEvents( eventsToStoreA, startIndex, quantity );
+                try
+                {
+                    Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+                    return writer.storeEvents( eventsToStoreA, startIndex, quantity );
+                }
+                finally 
+                {
+                    Thread.CurrentThread.Priority = ThreadPriority.Normal;
+                }
             } );
             return task;
         }
@@ -188,19 +305,16 @@ namespace PostgreSqlDataAccess
             {
                 if (disposing)
                 {
-                    lock (StoreThreadStateLock) {
-                        StoreThreadState = StoreThreadStates.Terminating;
-                    }
+                    WaitForStoring();
+
+                    _storingThread.terminate();
+
                     for (int i = 0; i < WritersQuantity; i++)
                     {
                         Writers[i]?.Dispose();
                     }
 
-                    StoreThread.Join();
-
-                    //if (!StoreThread.Join( 5000 )) {
-                    //    StoreThread.Abort();
-                    //}
+                    _storingThread.waitForTermination();
                 }
                 disposedValue = true;
             }

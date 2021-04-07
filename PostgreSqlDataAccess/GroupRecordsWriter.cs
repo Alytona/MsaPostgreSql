@@ -24,6 +24,11 @@ namespace PostgreSqlDataAccess
 
         readonly AGroupInsertMaker InsertMaker;
 
+        public delegate void StoredEventHandler (uint storedQuantity);
+        public event StoredEventHandler OnStored;
+        public delegate void ErrorsEventHandler (uint errorRecordsQuantity);
+        public event ErrorsEventHandler OnError;
+
         protected AGroupRecordsWriter (string connectionString, AGroupInsertMaker insertMaker, uint transactionSize)
         {
             ConnectionString = connectionString;
@@ -42,24 +47,33 @@ namespace PostgreSqlDataAccess
             InsertMaker.setCollection( recordsToStore, startIndex, quantity );
 
             uint insertsCounter = 0;
+            uint storedCounter = 0;
+
             string query = InsertMaker.nextQuery();
             while (query != null)
             {
                 int queryResult = DbContext.Database.ExecuteSqlCommand( query, InsertMaker.FieldValues );
-                if (queryResult > 0)
+                if (queryResult > 0) { 
                     insertResultCounter += (uint)queryResult;
+                    storedCounter += (uint)queryResult;
+                }
+                //else {
+                //    OnError( InsertMaker.InsertSize );
+                //}
 
                 if (++insertsCounter == TransactionSize)
                 {
                     DbContext.SaveChanges();
+                    OnStored( storedCounter );
+                    storedCounter = 0;
                     insertsCounter = 0;
                 }
-
                 query = InsertMaker.nextQuery();
             }
 
             if (insertsCounter > 0)
                 DbContext.SaveChanges();
+            OnStored( storedCounter );
 
             return insertResultCounter;
         }

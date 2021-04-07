@@ -51,7 +51,23 @@ public:
 
 void logQueueLen(unsigned int queueLen)
 {
+    Console::Write( DateTime::Now.ToString( "HH:mm:ss.fff " ) );
     Console::WriteLine( "Queue length is " + queueLen );
+}
+
+void logErrors(unsigned int storedCount, List <Exception^> ^errors)
+{
+    if (errors != nullptr && errors->Count > 0) {
+        Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
+        Console::WriteLine( "There are errors!" );
+        auto enumerator = errors->GetEnumerator();
+        do {
+            if (enumerator.Current != nullptr) 
+            {
+                Console::WriteLine( "Error: " + enumerator.Current->Message );
+            }
+        } while (enumerator.MoveNext());
+    }
 }
 
 int main()
@@ -71,32 +87,55 @@ int main()
 
         int counter1 = context->ParameterEventsCount;
         Console::WriteLine("We have " + counter1 + " event(s).");
-
-        writeAdapter = gcnew EventsWriteAdapter(connectionString, 3, 200, 10);
-        logger = gcnew WritingQueueLengthLogger( writeAdapter );
-        logger->OnLogged += gcnew WritingQueueLengthLogger::LogQueueLenEventHandler( &logQueueLen );
-
         int counter2 = 0;
         int quantity = 10000;
-        EventsBulk^ bulk = EventsBulk::generateBulk(quantity);
 
-        DateTime startTime = DateTime::Now;
-        Console::WriteLine("Start time : " + startTime);
-        do
+        DateTime startTime;
+        try {
+            writeAdapter = gcnew EventsWriteAdapter(connectionString, 3, 200, 10);
+            writeAdapter->OnStored += gcnew GroupRecordsWriteAdapter::StoredEventHandler(&logErrors);
+            logger = gcnew WritingQueueLengthLogger(writeAdapter);
+            logger->OnLogged += gcnew WritingQueueLengthLogger::LogQueueLenEventHandler(&logQueueLen);
+
+            counter2 = 0;
+            EventsBulk^ bulk = EventsBulk::generateBulk(quantity);
+
+            startTime = DateTime::Now;
+            Console::WriteLine("Start time : " + startTime.ToString("HH:mm:ss.fff "));
+            do
+            {
+                writeAdapter->StoreEvents(bulk->getEvents());
+                Thread::Sleep(50);
+                counter2++;
+            } while ((DateTime::Now - startTime).TotalSeconds < 60);
+
+            Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
+            Console::WriteLine("Writing to adapter was stopped.");
+        }
+        finally
         {
-            writeAdapter->StoreEvents(bulk->getEvents());
-            Thread::Sleep( 50 );
-            counter2++;
-        }
-        while ((DateTime::Now - startTime).TotalSeconds < 60);
+            Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
+            Console::WriteLine("Disposing adapter ...");
+            if (writeAdapter != nullptr)
+                delete writeAdapter;
+            Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
+            Console::WriteLine("done.");
 
-        while (writeAdapter->GetQueueLength() != 0) {
-            Thread::Sleep(50);
+            if (logger != nullptr)
+                delete logger;
         }
 
-        Console::WriteLine("We have " + context->ParameterEventsCount + " event(s).");
-        Console::WriteLine("We have written " + (context->ParameterEventsCount - counter1) + " event(s).");
-        Console::WriteLine("We have written " + counter2 * 10000 + " event(s).");
+        DateTime endTime = DateTime::Now;
+        Console::WriteLine("Writing duration is " + (endTime - startTime).TotalMilliseconds + " milliseconds.");
+
+        double timePerTenThousand = (double)(endTime - startTime).TotalMilliseconds / (counter2 * quantity / 10000);
+        Console::WriteLine(timePerTenThousand.ToString("N3") + " milliseconds per 10000 events.");
+
+        Console::WriteLine(DateTime::Now.ToString("HH:mm:ss.fff "));
+        int parametersQuantity = context->ParameterEventsCount;
+        Console::WriteLine("We have " + parametersQuantity + " event(s).");
+        Console::WriteLine("We have written " + (parametersQuantity - counter1) + " event(s).");
+        Console::WriteLine("We have written " + counter2 * quantity + " event(s).");
     }
     catch (System::Exception^ error)
     {
@@ -104,16 +143,10 @@ int main()
     }
     finally
     {
-        if (writeAdapter != nullptr)
-            delete writeAdapter;
-
         Console::WriteLine("Deleting of the DB connection.");
         if (context != nullptr)
             delete context;
         Console::WriteLine("The DB connection was deleted.");
-
-        if (logger != nullptr)
-            delete logger;
     }
 
     Console::WriteLine("Press a key");

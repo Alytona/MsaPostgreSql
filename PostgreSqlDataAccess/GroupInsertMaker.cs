@@ -9,8 +9,8 @@ namespace PostgreSqlDataAccess
     public abstract class AGroupInsertMaker
     {
         readonly uint ColumnsQuantity;
-        readonly uint InsertSize;
         readonly string InsertQuery;
+        public readonly uint InsertSize;
 
         readonly string[] ValuesParts;
         public readonly object[] FieldValues;
