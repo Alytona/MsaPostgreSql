@@ -48,8 +48,11 @@ namespace PostgreSqlDataAccess
         /// <param name="modelBuilder"></param>
         protected override void OnModelCreating (DbModelBuilder modelBuilder)
         {
+            // Устанавливаем имя схемы
             modelBuilder.HasDefaultSchema( "public" );
+            // Ключевым полем делаем EventId
             modelBuilder.Entity<ParameterEvent>().Property( b => b.EventId );
+
             base.OnModelCreating( modelBuilder );
         }
     }

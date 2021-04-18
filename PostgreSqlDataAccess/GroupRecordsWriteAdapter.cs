@@ -181,6 +181,13 @@ namespace PostgreSqlDataAccess
         readonly ThreadSafeCounter ErrorsCounter = new ThreadSafeCounter();
         readonly EventsPrepareBuffer PrepareBuffer = new EventsPrepareBuffer();
 
+        /// <summary>
+        /// Выполняет добавление порций записей в БД
+        /// </summary>
+        /// <param name="connectionString">Строка подключения к БД</param>
+        /// <param name="writersQuantity">Количество потоков добавления записей</param>
+        /// <param name="insertSize">Количество записей, добавляемых одним оператором INSERT</param>
+        /// <param name="transactionSize">Количество операций в транзакции</param>
         protected GroupRecordsWriteAdapter (string connectionString, uint writersQuantity, uint insertSize, uint transactionSize)
         {
             WritersQuantity = writersQuantity;
