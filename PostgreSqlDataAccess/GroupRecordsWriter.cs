@@ -63,7 +63,7 @@ namespace PostgreSqlDataAccess
         /// Конструктор
         /// </summary>
         /// <param name="connectionString">Строка подключения к БД</param>
-        /// <param name="insertMaker">Объект, ктороый будет создавать запросы</param>
+        /// <param name="insertMaker">Объект, который будет создавать запросы</param>
         /// <param name="transactionSize">Количество операторов добавления в транзакции</param>
         protected AGroupRecordsWriter (string connectionString, AGroupInsertMaker insertMaker, uint transactionSize)
         {

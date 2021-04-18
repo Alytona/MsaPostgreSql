@@ -136,7 +136,7 @@ int main()
         context = gcnew MonitoringDb(connectionString);
 
         // Установка таймаута в секундах
-        context->Database->CommandTimeout = 4;
+        context->Database->CommandTimeout = 10;
 
         // EF6 создаёт БД, если её не существует
         if (context->Database->CreateIfNotExists())
