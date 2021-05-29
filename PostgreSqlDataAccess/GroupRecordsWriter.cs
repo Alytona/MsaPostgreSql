@@ -105,10 +105,6 @@ namespace PostgreSqlDataAccess
                     insertResultCounter += (uint)queryResult;
                     storedCounter += (uint)queryResult;
                 }
-                // Если ничего не добавлено - это признак ошибки
-                //else {
-                //    OnError( InsertMaker.InsertSize );
-                //}
 
                 // Считаем количество выполненных запросов, если достигнут размер транзакции - закрываем её
                 if (++insertsCounter == TransactionSize)

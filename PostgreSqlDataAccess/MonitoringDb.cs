@@ -12,6 +12,15 @@ namespace PostgreSqlDataAccess
     /// </summary>
     public class MonitoringDb : DbContext
     {
+        public DbSet<Project> Projects
+        {
+            get; set;
+        }
+        public DbSet<Parameter> Parameters
+        {
+            get; set;
+        }
+
         /// <summary>
         /// Таблица событий
         /// </summary>
@@ -25,7 +34,32 @@ namespace PostgreSqlDataAccess
         /// </summary>
         public int ParameterEventsCount
         {
-            get => ParameterEvents.Count();
+            get 
+            {
+                ParameterEvent firstEvent = ParameterEvents.OrderBy( record => record.EventId ).FirstOrDefault();
+                if (firstEvent == null)
+                    return 0;
+                return ParameterEvents.Max( e => e.EventId ) - firstEvent.EventId + 1;
+            }
+        }
+        public int? FirstParameterEventId
+        {
+            get
+            {
+                return ParameterEvents.OrderBy( record => record.EventId ).FirstOrDefault()?.EventId;
+            }
+        }
+        public int? LastParameterEventId
+        {
+            get
+            {
+                return ParameterEvents.OrderByDescending( record => record.EventId ).FirstOrDefault()?.EventId;
+            }
+        }
+
+        void LogToConsole (string message)
+        {
+            Console.WriteLine( message );
         }
 
         /// <summary>
@@ -34,6 +68,8 @@ namespace PostgreSqlDataAccess
         /// <param name="connectionString">Строка с параметрами соединения с сервером БД</param>
         public MonitoringDb (string connectionString) : base( new Npgsql.NpgsqlConnection( connectionString ), contextOwnsConnection: true )
         {
+            // this.Database.Log += LogToConsole;
+
             // Выключаем автоматический запуск DetectChanges()
             Configuration.AutoDetectChangesEnabled = false;
             // Выключаем автоматическую валидацию при вызове SaveChanges()
@@ -49,9 +85,12 @@ namespace PostgreSqlDataAccess
         protected override void OnModelCreating (DbModelBuilder modelBuilder)
         {
             // Устанавливаем имя схемы
-            modelBuilder.HasDefaultSchema( "public" );
-            // Ключевым полем делаем EventId
+            modelBuilder.HasDefaultSchema( "edition_2" );
+
+            // Задаём ключевые поля
             modelBuilder.Entity<ParameterEvent>().Property( b => b.EventId );
+            modelBuilder.Entity<Project>().Property( b => b.Id );
+            modelBuilder.Entity<Parameter>().Property( b => b.Id );
 
             base.OnModelCreating( modelBuilder );
         }
