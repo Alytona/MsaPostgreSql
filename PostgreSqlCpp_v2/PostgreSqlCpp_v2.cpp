@@ -136,11 +136,15 @@ int main()
         context = gcnew MonitoringDb(connectionString);
 
         // Установка таймаута в секундах
-        context->Database->CommandTimeout = 10;
+        context->Database->CommandTimeout = 30;
 
         // EF6 создаёт БД, если её не существует
         if (context->Database->CreateIfNotExists())
             cout << "Database created" << endl;
+
+        int startEventId = context->LastParameterEventId.HasValue ? context->LastParameterEventId.Value : -1;
+        Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
+        Console::WriteLine("Last id : " + startEventId);
 
         // Читаем стартовое количество записей в таблице событий
         int counter1 = context->ParameterEventsCount;
@@ -218,10 +222,15 @@ int main()
         Console::WriteLine(DateTime::Now.ToString("HH:mm:ss.fff "));
         int parametersQuantity = context->ParameterEventsCount;
 
+        //int endEventId = context->LastParameterEventId;
+        //Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
+        //Console::WriteLine("Last id : " + endEventId);
+
         // Всего записей в таблице
         Console::WriteLine("We have " + parametersQuantity + " event(s).");
         // Считаем разницу между было и стало для определения фактического количества добавленных записей
         Console::WriteLine("We have written " + (parametersQuantity - counter1) + " event(s).");
+        // Console::WriteLine("We have written " + (endEventId - startEventId) + " event(s).");
         // Выводим количество записей, которое должно было добавиться
         Console::WriteLine("We have written " + counter2 * quantity + " event(s).");
     }
