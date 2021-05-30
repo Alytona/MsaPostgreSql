@@ -18,7 +18,7 @@ namespace PostgreSqlDataAccess
         /// <summary>
         /// Начальная часть оператора (со списком полей)
         /// </summary>
-        readonly string InsertQuery;
+        // readonly string InsertQuery;
         /// <summary>
         /// Количество записей в одном операторе
         /// </summary>
@@ -56,9 +56,10 @@ namespace PostgreSqlDataAccess
         /// <param name="columnsQuantity">Количество полей записи</param>
         /// <param name="insertQuery">Начальная часть оператора (со списком полей)</param>
         /// <param name="insertSize">Количество записей в одном операторе</param>
-        protected AGroupInsertMaker (uint columnsQuantity, string insertQuery, uint insertSize)
+        //protected AGroupInsertMaker (uint columnsQuantity, string insertQuery, uint insertSize)
+        protected AGroupInsertMaker (uint columnsQuantity, uint insertSize)
         {
-            InsertQuery = insertQuery;
+            // InsertQuery = insertQuery;
             ColumnsQuantity = columnsQuantity;
             InsertSize = insertSize;
 
@@ -110,7 +111,7 @@ namespace PostgreSqlDataAccess
                 return null;
 
             // Здесь будем собирать запрос
-            StringBuilder queryBuilder = new StringBuilder( InsertQuery );
+            StringBuilder queryBuilder = makeQueryBuilder(); //  new StringBuilder( InsertQuery );
 
             uint insertRowIndex = 0;
 
@@ -144,6 +145,8 @@ namespace PostgreSqlDataAccess
             // Отдаём готовый запрос
             return queryBuilder.ToString();
         }
+
+        protected abstract StringBuilder makeQueryBuilder ();
 
         /// <summary>
         /// Метод, выполняющий проверку типа коллекции

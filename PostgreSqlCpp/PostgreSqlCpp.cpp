@@ -181,7 +181,7 @@ public:
         for (int i = 0; i < quantity; i++)
         {
             ParameterEvent^ parameterEvent = gcnew ParameterEvent();
-            parameterEvent->ParameterName = "parameter_" + i;
+            parameterEvent->ParameterId = i % 10;
             parameterEvent->Time = DateTime::Now;
             parameterEvent->Value = 0.011F;
             parameterEvent->Status = 11;

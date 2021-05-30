@@ -29,26 +29,40 @@ namespace PostgreSqlDataAccess
         /// <summary>
         /// Начальная часть SQL-оператора добавления записей
         /// </summary>
-        internal static readonly string InsertQuery = "insert into \"ParameterEvents\" (parameter_name, event_time, event_value, event_status) values ";
+        //internal static readonly string InsertQuery = "insert into \"ParameterEvents\" (par_id, event_time, event_value, event_status) values ";
+        /// <summary>
+        /// Начальная часть SQL-оператора добавления записей
+        /// </summary>
+        // internal static readonly string InsertQueryFormat = "insert into \"parameter{0}values\" (year_month, event_time, event_value, event_status) values ";
         /// <summary>
         /// Строка формата для заполнения значений одной из вставляемых записей
         /// </summary>
         internal static readonly string ValuesPartFormat = "(@p{0}, @p{1}, @p{2}, @p{3})";
 
-        /// <summary>
-        /// Идентификатор события, суррогатный ключ с автоинкрементом
-        /// </summary>
-        [Key]
-        [Column( "event_id" )]
-        public int EventId
+        //[Column( "year_month" )]
+        public int ParameterId
         {
             get; set;
         }
+
         /// <summary>
-        /// Имя параметра
+        /// Идентификатор события, суррогатный ключ с автоинкрементом
         /// </summary>
-        [Column( "parameter_name" )]
-        public string ParameterName
+        // [Key]
+        [Column( "year_month" )]
+        public string YearMonth
+        {
+            get {
+                return $"{ Time.Year - 2000 }_{ Time.Month:D2}";
+            }
+        }
+
+        /// <summary>
+        /// Идентификатор события, суррогатный ключ с автоинкрементом
+        /// </summary>
+        // [Key]
+        [Column( "event_id" )]
+        public int EventId
         {
             get; set;
         }
@@ -83,7 +97,7 @@ namespace PostgreSqlDataAccess
         /// <returns></returns>
         public override string ToString ()
         {
-            return ParameterName + " - " + EventId;
+            return YearMonth + " - " + EventId;
         }
 
         /// <summary>
@@ -95,39 +109,10 @@ namespace PostgreSqlDataAccess
         /// <param name="valuesIndex">Индекс в массиве, начиная с которого вписываются значения</param>
         public void FillValues (object[] fieldValues, uint valuesIndex)
         {
-            fieldValues[valuesIndex] = ParameterName;
+            fieldValues[valuesIndex] = YearMonth;
             fieldValues[valuesIndex + 1] = Time;
             fieldValues[valuesIndex + 2] = Value;
             fieldValues[valuesIndex + 3] = Status;
-        }
-    }
-
-    /// <summary>
-    /// Реализация класса группового добавления записей для таблицы ParameterEvents
-    /// </summary>
-    public class EventsWriteAdapter : GroupRecordsWriteAdapter
-    {
-        /// <summary>
-        /// Конструктор
-        /// </summary>
-        /// <param name="connectionString">Строка с параметрами соединения с сервером БД</param>
-        /// <param name="writersQuantity">Количество потоков добавления записей</param>
-        /// <param name="insertSize">Максимальное количество записей, добавляемых одним оператором insert</param>
-        /// <param name="transactionSize">Максимальное количество операторов insert в одной транзакции</param>
-        public EventsWriteAdapter (string connectionString, uint writersQuantity, uint insertSize, uint transactionSize) : base( connectionString, writersQuantity, insertSize, transactionSize )
-        {
-        }
-
-        /// <summary>
-        /// Метод создания потока добавления записей
-        /// </summary>
-        /// <param name="connectionString">Строка с параметрами соединения с сервером БД</param>
-        /// <param name="insertSize">Максимальное количество записей, добавляемых одним оператором insert</param>
-        /// <param name="transactionSize">Максимальное количество операторов insert в одной транзакции</param>
-        /// <returns>Объект, инкапсулирующий поток добавления записей</returns>
-        protected override AGroupRecordsWriter createWriter (string connectionString, uint insertSize, uint transactionSize)
-        {
-            return new EventsGroupRecordsWriter( connectionString, insertSize, transactionSize );
         }
     }
 
@@ -136,11 +121,16 @@ namespace PostgreSqlDataAccess
     /// </summary>
     class EventsGroupInsertMaker : AGroupInsertMaker
     {
+        public int ParameterId
+        {
+            get; set;
+        }
+
         /// <summary>
         /// Конструктор
         /// </summary>
         /// <param name="insertSize">Максимальное количество записей, добавляемых одним оператором insert</param>
-        public EventsGroupInsertMaker (uint insertSize) : base( ParameterEvent.ColumnsQuantity, ParameterEvent.InsertQuery, insertSize )
+        public EventsGroupInsertMaker (uint insertSize) : base( ParameterEvent.ColumnsQuantity, insertSize )
         {
         }
 
@@ -155,6 +145,13 @@ namespace PostgreSqlDataAccess
 
             throw new ArrayTypeMismatchException( "Передана коллекция с неверным типом записей" );
         }
+
+        protected override StringBuilder makeQueryBuilder ()
+        {
+            StringBuilder queryBuilder = new StringBuilder( "insert into \"parameter" + ParameterId + "values\" (year_month, event_time, event_value, event_status) values " );
+            return queryBuilder;
+        }
+
     }
 
     /// <summary>
@@ -170,6 +167,13 @@ namespace PostgreSqlDataAccess
         /// <param name="transactionSize">Максимальное количество операторов insert в одной транзакции</param>
         public EventsGroupRecordsWriter (string connectionString, uint insertSize, uint transactionSize) : base( connectionString, new EventsGroupInsertMaker( insertSize ), transactionSize )
         {
+        }
+
+        public void setParameterId (int parameterId)
+        {
+            if (InsertMaker is EventsGroupInsertMaker insertMaker) {
+                insertMaker.ParameterId = parameterId;
+            }
         }
     }
 }

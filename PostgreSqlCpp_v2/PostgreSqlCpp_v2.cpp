@@ -57,7 +57,7 @@ public:
         for (int i = 0; i < quantity; i++)
         {
             ParameterEvent^ parameterEvent = gcnew ParameterEvent();
-            parameterEvent->ParameterName = "parameter_" + i;
+            parameterEvent->ParameterId = i % 100;
             parameterEvent->Time = DateTime::Now;
             parameterEvent->Value = 0.011F;
             parameterEvent->Status = 11;
@@ -117,7 +117,7 @@ int main()
 
     // Строка подключения к БД
     // Можно формировать из конфигурационного файла, пароль запрашивать при запуске приложения
-    String^ connectionString = "host=localhost;port=5432;database=Monitoring;user id=postgres;password=!Q2w3e4r;";
+    String^ connectionString = "host=localhost;port=5432;database=Monitoring_V2;user id=postgres;password=!Q2w3e4r;";
 
     // Ссылка на экземпляр класса модели БД
     MonitoringDb^ context = nullptr;
@@ -142,9 +142,9 @@ int main()
         if (context->Database->CreateIfNotExists())
             cout << "Database created" << endl;
 
-        int startEventId = context->LastParameterEventId.HasValue ? context->LastParameterEventId.Value : -1;
-        Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
-        Console::WriteLine("Last id : " + startEventId);
+        //int startEventId = context->LastParameterEventId.HasValue ? context->LastParameterEventId.Value : -1;
+        //Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
+        //Console::WriteLine("Last id : " + startEventId);
 
         // Читаем стартовое количество записей в таблице событий
         int counter1 = context->ParameterEventsCount;

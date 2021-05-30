@@ -22,38 +22,29 @@ namespace PostgreSqlDataAccess
         }
 
         /// <summary>
-        /// Таблица событий
-        /// </summary>
-        public DbSet<ParameterEvent> ParameterEvents
-        {
-            get; set;
-        }
-        /// <summary>
         /// Количество записей в таблице событий.
         /// Сделано отдельное свойство, так как Count - метод расширения и в проектах на C++\CLI недоступен 
         /// </summary>
+
         public int ParameterEventsCount
         {
             get 
             {
-                ParameterEvent firstEvent = ParameterEvents.OrderBy( record => record.EventId ).FirstOrDefault();
-                if (firstEvent == null)
-                    return 0;
-                return ParameterEvents.Max( e => e.EventId ) - firstEvent.EventId + 1;
-            }
-        }
-        public int? FirstParameterEventId
-        {
-            get
-            {
-                return ParameterEvents.OrderBy( record => record.EventId ).FirstOrDefault()?.EventId;
-            }
-        }
-        public int? LastParameterEventId
-        {
-            get
-            {
-                return ParameterEvents.OrderByDescending( record => record.EventId ).FirstOrDefault()?.EventId;
+                List<string> tableNames = new List<string>();
+                var result = Database.SqlQuery( typeof( string ), "SELECT table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema','pg_catalog') AND table_name like '%values';" );
+                foreach (string tableName in result) {
+                    tableNames.Add( tableName );
+                }
+                int count = 0;
+                foreach (string tableName in tableNames)
+                {
+                    var quantityQueryResult = Database.SqlQuery( typeof(int), "select max(event_id) - min(event_id) from " + tableName + ";" );
+                    foreach (int quantity in quantityQueryResult)
+                    {
+                        count += quantity;
+                    }
+                }
+                return count;
             }
         }
 
@@ -85,10 +76,13 @@ namespace PostgreSqlDataAccess
         protected override void OnModelCreating (DbModelBuilder modelBuilder)
         {
             // Устанавливаем имя схемы
-            modelBuilder.HasDefaultSchema( "edition_2" );
+            modelBuilder.HasDefaultSchema( "public" );
+
+            // modelBuilder.Entity<ParameterEvent>().ToTable( "ParameterEvents", "edition_2" );
 
             // Задаём ключевые поля
-            modelBuilder.Entity<ParameterEvent>().Property( b => b.EventId );
+            // modelBuilder.Entity<ParameterEvent>().HasKey( b => b.EventId );
+
             modelBuilder.Entity<Project>().Property( b => b.Id );
             modelBuilder.Entity<Parameter>().Property( b => b.Id );
 

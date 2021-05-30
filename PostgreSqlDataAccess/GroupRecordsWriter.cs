@@ -37,7 +37,7 @@ namespace PostgreSqlDataAccess
         /// <summary>
         /// Объект, выполняющий создание запроса
         /// </summary>
-        readonly AGroupInsertMaker InsertMaker;
+        protected readonly AGroupInsertMaker InsertMaker;
 
         /// <summary>
         /// Обработчик события, вызываемого после добавления очередной порции записей
