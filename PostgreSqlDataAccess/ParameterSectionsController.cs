@@ -133,7 +133,7 @@ namespace PostgreSqlDataAccess
             StringBuilder commandBuilder = new StringBuilder();
             foreach (ParameterValues parameterData in FilledParametersSet.Values)
             {
-                string tablename = "parameter" + parameterData.ParameterSection.ParameterId + "values";
+                string tablename = "var_" + parameterData.ParameterSection.ParameterId;
                 if (parameterData.ParameterSection.IsNewParameter)
                 {
                     // создать таблицу для нового параметра, предварительно проверив, нет ли такой таблицы
@@ -143,8 +143,8 @@ namespace PostgreSqlDataAccess
                     commandBuilder.AppendLine( "event_id SERIAL," );
                     commandBuilder.AppendLine( "event_time timestamp without time zone," );
                     commandBuilder.AppendLine( "event_value real," );
-                    commandBuilder.AppendLine( "event_status integer," );
-                    commandBuilder.AppendLine( "constraint " + tablename + "_pkey PRIMARY KEY( year_month, event_id )" );
+                    commandBuilder.AppendLine( "event_status integer" );
+//                    commandBuilder.AppendLine( "constraint " + tablename + "_pkey PRIMARY KEY( year_month, event_id )" );
                     commandBuilder.AppendLine( ") PARTITION BY RANGE( year_month );" );
                     int result = DbContext.Database.ExecuteSqlCommand( commandBuilder.ToString() );
                 }

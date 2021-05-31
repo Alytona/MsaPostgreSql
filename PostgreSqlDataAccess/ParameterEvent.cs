@@ -148,7 +148,7 @@ namespace PostgreSqlDataAccess
 
         protected override StringBuilder makeQueryBuilder ()
         {
-            StringBuilder queryBuilder = new StringBuilder( "insert into \"parameter" + ParameterId + "values\" (year_month, event_time, event_value, event_status) values " );
+            StringBuilder queryBuilder = new StringBuilder( "insert into \"var_" + ParameterId + "\" (year_month, event_time, event_value, event_status) values " );
             return queryBuilder;
         }
 

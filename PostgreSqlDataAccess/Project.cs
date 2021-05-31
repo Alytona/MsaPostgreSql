@@ -8,6 +8,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PostgreSqlDataAccess
 {
+    [Table( "projects" )]
     public class Project
     {
         [Key]

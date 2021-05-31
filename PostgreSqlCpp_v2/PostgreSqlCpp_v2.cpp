@@ -53,15 +53,18 @@ public:
     /// <param name="quantity">Количество событий</param>
     /// </summary>
     EventsBulk (int quantity) {
+
+        DateTime currentTime = DateTime::Now;
         Events = gcnew List< ParameterEvent^ >(quantity);
         for (int i = 0; i < quantity; i++)
         {
             ParameterEvent^ parameterEvent = gcnew ParameterEvent();
-            parameterEvent->ParameterId = i % 100;
-            parameterEvent->Time = DateTime::Now;
+            parameterEvent->ParameterId = i % 1000;
+            parameterEvent->Time = DateTime::Now; // currentTime;
             parameterEvent->Value = 0.011F;
             parameterEvent->Status = 11;
             Events->Add(parameterEvent);
+            // currentTime = currentTime.AddMinutes(30);
         }
     }
 
@@ -141,6 +144,18 @@ int main()
         // EF6 создаёт БД, если её не существует
         if (context->Database->CreateIfNotExists())
             cout << "Database created" << endl;
+
+        // Заполнение таблицы параметров
+        for (int i = 1; i <= 1000; i++) 
+        {
+            Parameter^ parameter = gcnew Parameter();
+            parameter->Name = "parameter " + i;
+            parameter->Comment = "Комментарий к параметру";
+            parameter->Units = "inches, дюймы по-нашему";
+            parameter->Source = "Откуда ни возьмись";
+            context->Parameters->Add(parameter);
+        }
+        context->SaveChanges();
 
         //int startEventId = context->LastParameterEventId.HasValue ? context->LastParameterEventId.Value : -1;
         //Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
