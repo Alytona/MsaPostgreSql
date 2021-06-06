@@ -44,7 +44,7 @@ namespace PostgreSqlDataAccess
         /// Обработчик события, которое вызывается при получении очередного значения длины очереди
         /// </summary>
         /// <param name="queueLen"></param>
-        public delegate void LogQueueLenEventHandler (uint queueLen);
+        public delegate void LogQueueLenEventHandler (uint prepared, uint storing, uint errors);
         /// <summary>
         /// Событие, которое вызывается при получении очередного значения длины очереди
         /// </summary>
@@ -72,8 +72,8 @@ namespace PostgreSqlDataAccess
             do
             {
                 // Вызываем событие с текущей длиной очереди
-                OnLogged?.Invoke( EventsWriteAdapterInstance.GetQueueLength() );
-                Thread.Sleep( 100 );
+                OnLogged?.Invoke( EventsWriteAdapterInstance.PreparedLen, EventsWriteAdapterInstance.StoringQueueLen, EventsWriteAdapterInstance.ErrorsQuantity );
+                Thread.Sleep( 300 );
 
                 // Осторожно читаем состояние потока, чтобы проверить, не пора ли заканчивать
                 lock (ThreadStateLock)
