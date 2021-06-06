@@ -262,7 +262,7 @@ namespace PostgreSqlDataAccess
         /// Признак того, что выполняется запись буфера в БД.
         /// Используется при ожидании завершения записи перед освобождением ресурсов
         /// </summary>
-        bool _storing;
+        bool _storing = true;
         readonly object StoringLock = new object();
         protected bool Storing
         {
