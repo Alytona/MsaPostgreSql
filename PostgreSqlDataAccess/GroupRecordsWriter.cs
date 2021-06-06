@@ -94,13 +94,17 @@ namespace PostgreSqlDataAccess
             uint insertsCounter = 0;
             uint storedCounter = 0;
 
+            uint queryRowsCounter;
+
             // Берём у построителя очередной запрос
-            string query = InsertMaker.nextQuery();
+            string query = InsertMaker.nextQuery(out queryRowsCounter);
             // И пока он не вернёт нам null
             while (query != null)
             {
                 // Выполняем запрос к БД, получаем количество добавленных записей
                 int queryResult = DbContext.Database.ExecuteSqlCommand( query, InsertMaker.FieldValues );
+                //int queryResult = (int)queryRowsCounter;
+
                 if (queryResult > 0) { 
                     insertResultCounter += (uint)queryResult;
                     storedCounter += (uint)queryResult;
@@ -119,7 +123,7 @@ namespace PostgreSqlDataAccess
                     insertsCounter = 0;
                 }
                 // Получаем следующий запрос
-                query = InsertMaker.nextQuery();
+                query = InsertMaker.nextQuery( out queryRowsCounter );
             }
 
             // Если счетчик добавлений не обнулён, значит последняя транзакция была короткой и её тоже надо закрыть

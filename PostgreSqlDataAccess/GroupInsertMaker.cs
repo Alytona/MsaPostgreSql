@@ -104,8 +104,10 @@ namespace PostgreSqlDataAccess
         /// Сначала следует выполнить setCollection, а затем выполнять nextQuery до тех пор, пока он не вернёт null
         /// </summary>
         /// <returns>Запрос к БД в виде строки</returns>
-        public string nextQuery ()
+        public string nextQuery (out uint insertRows)
         {
+            insertRows = 0;
+
             // Если нужное количество записей уже добавлено, возвращаем пустой оператор
             if (RowIndex >= StartIndex + RecordsQuantity)
                 return null;
@@ -123,7 +125,7 @@ namespace PostgreSqlDataAccess
                 queryBuilder.Append( ValuesParts[insertRowIndex] );
 
                 // Заполняем массив FieldValues значениями полей текущей записи
-                RecordsToStore[(int)RowIndex].FillValues( FieldValues, valuesIndex );
+                FillValuesForRecord( RecordsToStore[(int)RowIndex], FieldValues, valuesIndex );
                 valuesIndex += ColumnsQuantity;
 
                 insertRowIndex++;
@@ -142,9 +144,13 @@ namespace PostgreSqlDataAccess
                     queryBuilder.Append( ", " );
                 }
             }
+            insertRows = insertRowIndex;
+
             // Отдаём готовый запрос
             return queryBuilder.ToString();
         }
+
+        protected abstract void FillValuesForRecord (IGroupInsertableRecord record, object[] fieldValues, uint valuesIndex );
 
         protected abstract StringBuilder makeQueryBuilder ();
 

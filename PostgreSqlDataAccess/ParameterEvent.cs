@@ -39,7 +39,6 @@ namespace PostgreSqlDataAccess
         /// </summary>
         internal static readonly string ValuesPartFormat = "(@p{0}, @p{1}, @p{2}, @p{3})";
 
-        //[Column( "year_month" )]
         public int ParameterId
         {
             get; set;
@@ -48,20 +47,6 @@ namespace PostgreSqlDataAccess
         /// <summary>
         /// Идентификатор события, суррогатный ключ с автоинкрементом
         /// </summary>
-        // [Key]
-        [Column( "year_month" )]
-        public string YearMonth
-        {
-            get {
-                return $"{ Time.Year - 2000 }_{ Time.Month:D2}";
-            }
-        }
-
-        /// <summary>
-        /// Идентификатор события, суррогатный ключ с автоинкрементом
-        /// </summary>
-        // [Key]
-        [Column( "event_id" )]
         public int EventId
         {
             get; set;
@@ -69,7 +54,6 @@ namespace PostgreSqlDataAccess
         /// <summary>
         /// Время появления события
         /// </summary>
-        [Column( "event_time" )]
         public DateTime Time
         {
             get; set;
@@ -77,7 +61,6 @@ namespace PostgreSqlDataAccess
         /// <summary>
         /// Значение, ассоциированное с событием
         /// </summary>
-        [Column( "event_value" )]
         public float Value
         {
             get; set;
@@ -85,19 +68,9 @@ namespace PostgreSqlDataAccess
         /// <summary>
         /// Состояние события
         /// </summary>
-        [Column( "event_status" )]
         public int Status
         {
             get; set;
-        }
-
-        /// <summary>
-        /// Метод для отображения в виде строки
-        /// </summary>
-        /// <returns></returns>
-        public override string ToString ()
-        {
-            return YearMonth + " - " + EventId;
         }
 
         /// <summary>
@@ -109,7 +82,6 @@ namespace PostgreSqlDataAccess
         /// <param name="valuesIndex">Индекс в массиве, начиная с которого вписываются значения</param>
         public void FillValues (object[] fieldValues, uint valuesIndex)
         {
-            fieldValues[valuesIndex] = YearMonth;
             fieldValues[valuesIndex + 1] = Time;
             fieldValues[valuesIndex + 2] = Value;
             fieldValues[valuesIndex + 3] = Status;
@@ -121,6 +93,8 @@ namespace PostgreSqlDataAccess
     /// </summary>
     class EventsGroupInsertMaker : AGroupInsertMaker
     {
+        private readonly Dictionary<int, string> MonthsDictionary = new Dictionary<int, string>();
+
         public int ParameterId
         {
             get; set;
@@ -152,6 +126,24 @@ namespace PostgreSqlDataAccess
             return queryBuilder;
         }
 
+        protected override void FillValuesForRecord (IGroupInsertableRecord record, object[] fieldValues, uint valuesIndex)
+        {
+            record.FillValues( fieldValues, valuesIndex );
+
+            if (record is ParameterEvent parEventRecord) 
+            {
+                int year = parEventRecord.Time.Year - 2000;
+                int month = parEventRecord.Time.Month;
+                int monthKey = (year << 4) + month;
+
+                if (!MonthsDictionary.TryGetValue( monthKey, out string monthText ))
+                {
+                    monthText = $"{year}_{month:D2}";
+                    MonthsDictionary.Add( monthKey, monthText );
+                }
+                fieldValues[valuesIndex] = monthText;
+            }
+        }
     }
 
     /// <summary>
