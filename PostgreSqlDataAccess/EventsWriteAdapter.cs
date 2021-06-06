@@ -7,6 +7,20 @@ using System.Threading.Tasks;
 
 namespace PostgreSqlDataAccess
 {
+    class WriterSlot
+    {
+        public readonly ParameterValues Collection;
+        public readonly uint StartIndex;
+        public readonly uint Quantity;
+
+        public WriterSlot (ParameterValues collection, uint startIndex, uint quantity)
+        {
+            Collection = collection;
+            StartIndex = startIndex;
+            Quantity = quantity;
+        }
+    }
+
     /// <summary>
     /// Реализация класса группового добавления записей для таблицы ParameterEvents
     /// </summary>
@@ -50,36 +64,95 @@ namespace PostgreSqlDataAccess
         {
             // Переключаем буферы - в накопительном буфере создаём новую коллекцию, а для того, что накопилось вызываем сохранение
             List<ParameterEvent> eventsToStore = PrepareBuffer.replaceBufferIfNotEmpty();
-            Storing = eventsToStore != null && eventsToStore.Count > 0;
-
-            // Если буфер не пуст
-            if (eventsToStore != null)
+            uint totalEventsQuantity = (uint)(eventsToStore?.Count ?? 0);
+            if (totalEventsQuantity == 0)
             {
+                Storing = false;
+
+                // Если буфер был пустым, надо выполнить задержку
+                Thread.Sleep( 50 );
+            }
+            else 
+            {
+                Storing = true;
+
                 // Инициализируем количество несохраненных записей в буфере сохранения
-                BufferRemainderCounter.Value = (uint) eventsToStore.Count;
+                BufferRemainderCounter.Value = totalEventsQuantity;
                 List<Exception> errors = new List<Exception>();
 
-                SectionsController.fillParameterSections(eventsToStore );
+                SectionsController.fillParameterSections( eventsToStore );
                 SectionsController.createSections();
 
-                foreach (ParameterValues eventsCollection in SectionsController.FilledParametersSet.Values) 
-                {
-                    // Выполняем сохранение в синхронном режиме
-                    uint insertedCount = storeEventsTask( eventsCollection, errors );
-                    eventsCollection.clearEvents();
+                uint baseQuantityPerWriter = (totalEventsQuantity - 1) / WritersQuantity;
+                uint quantityRemainder = (totalEventsQuantity - 1) - baseQuantityPerWriter * WritersQuantity;
 
-                    // Сообщаем о результатах сохранения
-                    invokeOnStored( insertedCount, errors );
+                // Заполнение слотов для каждого потока записи
+
+                List<WriterSlot>[] WritersSlots = new List<WriterSlot>[WritersQuantity];
+                for (int i = 0; i < WritersQuantity; i++)
+                    WritersSlots[i] = new List<WriterSlot>();
+
+                uint slottedSize = 0;
+                uint currentWriter = 0;
+                uint quantityPerWriter = baseQuantityPerWriter;
+                if (0 <= quantityRemainder)
+                    quantityPerWriter++;
+
+                Console.WriteLine( $"collection size: {SectionsController.FilledParametersSet.Values.First().Events.Count}" );
+
+                int index = 0;
+                foreach (ParameterValues eventsCollection in SectionsController.FilledParametersSet.Values)
+                {
+                    // Console.WriteLine( $"collection {index++} size: {eventsCollection.Events.Count}" );
+
+                    uint startIndex = 0;
+                    while (startIndex < eventsCollection.Events.Count)
+                    {
+                        // Переключение на следующий слот
+                        if (slottedSize == quantityPerWriter)
+                        {
+                            slottedSize = 0;
+                            currentWriter++;
+                            quantityPerWriter = baseQuantityPerWriter;
+                            if (0 <= quantityRemainder)
+                                quantityPerWriter++;
+                        }
+
+                        uint slottedPortionSize = 0;
+                        if (slottedSize + eventsCollection.Events.Count - startIndex <= quantityPerWriter) //  + 100)
+                        {
+                            // Добавляем остаток коллекции
+                            slottedPortionSize = (uint)eventsCollection.Events.Count - startIndex;
+                        }
+                        else
+                        {
+                            // Если остаток коллекции не влезает
+                            // Добавляем  кусок коллекции, сколько влезет
+                            slottedPortionSize = quantityPerWriter - slottedSize;
+                        }
+                        if (slottedPortionSize > quantityPerWriter)
+                            slottedPortionSize = quantityPerWriter;
+
+                        WritersSlots[currentWriter].Add( new WriterSlot( eventsCollection, startIndex, slottedPortionSize ) );
+                        startIndex += slottedPortionSize;
+                        slottedSize += slottedPortionSize;
+                    }
+                }
+
+                // Выполняем сохранение в синхронном режиме
+                uint insertedCount = storeEventsTask( WritersSlots, errors );
+
+                // Сообщаем о результатах сохранения
+                invokeOnStored( insertedCount, errors );
+
+                foreach (ParameterValues eventsCollection in SectionsController.FilledParametersSet.Values)
+                {
+                    eventsCollection.clearEvents();
                 }
 
                 // Если по каким-то причинам что-то осталось в буфере сохранения, сообщаем об этом
                 if (BufferRemainderCounter.Value != 0)
                     Console.WriteLine( "BufferRemainderCounter.Remainder: " + BufferRemainderCounter.Value );
-            }
-            else
-            {
-                // Если буфер был пустым, надо выполнить задержку
-                Thread.Sleep( 50 );
             }
         }
 
@@ -93,6 +166,10 @@ namespace PostgreSqlDataAccess
             return PrepareBuffer.Length + BufferRemainderCounter.Value - ErrorsCounter.Value;
         }
 
+        public uint PreparedLen => PrepareBuffer.Length;
+        public uint StoringQueueLen => BufferRemainderCounter.Value;
+        public uint ErrorsQuantity => ErrorsCounter.Value;
+
         /// <summary>
         /// Добавляет записи в накопительный буфер
         /// </summary>
@@ -100,6 +177,7 @@ namespace PostgreSqlDataAccess
         public void StoreEvents (List<ParameterEvent> eventsToStore)
         {
             PrepareBuffer.addEvents( eventsToStore );
+            Storing = true;
         }
 
         /// <summary>
@@ -128,9 +206,6 @@ namespace PostgreSqlDataAccess
             List<Task<uint>> tasks = new List<Task<uint>>();
             try
             {
-                // Поднимаем флаг записи буфера
-                // Storing = true;
-
                 for (int i = 0; i < WritersQuantity; i++)
                 {
                     // Определяем количество записей, которое должен будет сохранить этот писатель
@@ -175,6 +250,88 @@ namespace PostgreSqlDataAccess
             }
             return insertedCount;
         }
+        /// <summary>
+        /// Запись буфера сохранения в БД
+        /// </summary>
+        /// <param name="eventsToStore">Буфер сохранения</param>
+        /// <param name="errors">Коллекция ошибок, возникших при сохранении</param>
+        /// <returns>Количество записей, добавленных в БД</returns>
+        private uint storeEventsTask (List<WriterSlot>[] WritersSlots, List<Exception> errors)
+        {
+            // Количество добавленных записей
+            uint insertedCount = 0;
+
+            // Коллекция заданий
+            List<Task<uint>> tasks = new List<Task<uint>>();
+            try
+            {
+                for (int i = 0; i < WritersQuantity; i++)
+                {
+                    // Создаём задание для писателя
+                    tasks.Add( runWriter( WritersSlots[i], (EventsGroupRecordsWriter)Writers[i] ) );
+                }
+
+                // Ожидаем завершения заданий и собираем количество сохраненных записей
+                foreach (Task<uint> task in tasks)
+                {
+                    task.Wait();
+                    insertedCount += task.Result;
+                }
+            }
+            catch (Exception error)
+            {
+                // Если произошла ошибка, добавляем её в коллекцию ошибок
+                errors.Add( error );
+
+                // Если ошибка произошла в каком-то задании, тоже добавляем её в коллекцию ошибок
+                foreach (Task<uint> task in tasks)
+                {
+                    if (task.Exception != null)
+                        errors.Add( task.Exception );
+                }
+            }
+            return insertedCount;
+        }
+        /// <summary>
+        /// Запись буфера сохранения в БД
+        /// </summary>
+        /// <param name="eventsToStore">Буфер сохранения</param>
+        /// <param name="errors">Коллекция ошибок, возникших при сохранении</param>
+        /// <returns>Количество записей, добавленных в БД</returns>
+        private uint storeEventsTask (List<ParameterValues> eventsCollections, uint writerIndex, List<Exception> errors)
+        {
+
+            // Количество добавленных записей
+            uint insertedCount = 0;
+
+            foreach (ParameterValues eventsCollection in eventsCollections) 
+            {
+                uint totalQuantity = (uint)eventsCollection.Events.Count;
+                Task<uint> task = null;
+                try
+                {
+                    (Writers[writerIndex] as EventsGroupRecordsWriter).setParameterId( eventsCollection.ParameterSection.ParameterId );
+
+                    // Создаём задание для писателя
+                    task = runWriter( eventsCollection.Events, Writers[writerIndex], 0, totalQuantity );
+
+                    // Ожидаем завершения заданий и собираем количество сохраненных записей
+                    task.Wait();
+                    insertedCount += task.Result;
+                }
+                catch (Exception error)
+                {
+                    // Если произошла ошибка, добавляем её в коллекцию ошибок
+                    errors.Add( error );
+
+                    // Если ошибка произошла в каком-то задании, тоже добавляем её в коллекцию ошибок
+                    if (task != null && task.Exception != null)
+                        errors.Add( task.Exception );
+                }
+            }
+
+            return insertedCount;
+        }
 
         /// <summary>
         /// Создание задания для писателя (объекта, выполняющего сохранение записей в БД)
@@ -206,6 +363,44 @@ namespace PostgreSqlDataAccess
             } );
             return task;
         }
+
+        /// <summary>
+        /// Создание задания для писателя (объекта, выполняющего сохранение записей в БД)
+        /// </summary>
+        /// <param name="eventsToStore">Коллекция записей для добавления</param>
+        /// <param name="writer">Ссылка на писателя</param>
+        /// <param name="startIndex">Индекс записи, с которой нужно начать добавление</param>
+        /// <param name="quantity">Количество записей, которые нужно добавить</param>
+        /// <returns>Созданное задание</returns>
+        Task<uint> runWriter (List<WriterSlot> WritersSlots, EventsGroupRecordsWriter writer)
+        {
+            Task<uint> task = Task.Run( () => {
+                try
+                {
+                    // Устанавливаем приоритет потока ниже обычного
+                    Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+
+                    uint insertedCount = 0;
+                    foreach (WriterSlot slot in WritersSlots) {
+                        // Приведение типа коллекции
+                        IList<IGroupInsertableRecord> eventsToStoreA = slot.Collection.Events.Cast<IGroupInsertableRecord>().ToList();
+
+                        writer.setParameterId( slot.Collection.ParameterSection.ParameterId );
+
+                        // Вызываем метод сохранения писателя
+                        insertedCount += writer.storeEvents( eventsToStoreA, slot.StartIndex, slot.Quantity );
+                    }
+                    return insertedCount;
+                }
+                finally
+                {
+                    // Восстанавливаем приоритет потока
+                    Thread.CurrentThread.Priority = ThreadPriority.Normal;
+                }
+            } );
+            return task;
+        }
+
 
         #region Поддержка интерфейса IDisposable, освобождение неуправляемых ресурсов
 
