@@ -52,7 +52,62 @@ public:
     /// Конструктор порции с заданным количеством событий
     /// <param name="quantity">Количество событий</param>
     /// </summary>
+/*
     EventsBulk (int quantity) {
+
+        int portionQuantity = quantity / 6;
+
+        DateTime currentTime = DateTime::Now;
+        Events = gcnew List< ParameterEvent^ >(quantity);
+        int i = 0;
+        for (; i < portionQuantity * 2 + 500; i++)
+        {
+            ParameterEvent^ parameterEvent = gcnew ParameterEvent();
+            parameterEvent->ParameterId = 1; // i % 10;
+            parameterEvent->Time = DateTime::Now; // currentTime;
+            parameterEvent->Value = 0.011F;
+            parameterEvent->Status = 11;
+            Events->Add(parameterEvent);
+        }
+        for (; i < portionQuantity * 4 + 700; i++)
+        {
+            ParameterEvent^ parameterEvent = gcnew ParameterEvent();
+            parameterEvent->ParameterId = 2; // i % 10;
+            parameterEvent->Time = DateTime::Now; // currentTime;
+            parameterEvent->Value = 0.011F;
+            parameterEvent->Status = 11;
+            Events->Add(parameterEvent);
+        }
+        for (; i < portionQuantity * 5; i++)
+        {
+            ParameterEvent^ parameterEvent = gcnew ParameterEvent();
+            parameterEvent->ParameterId = 3; // i % 10;
+            parameterEvent->Time = DateTime::Now; // currentTime;
+            parameterEvent->Value = 0.011F;
+            parameterEvent->Status = 11;
+            Events->Add(parameterEvent);
+        }
+        for (; i < portionQuantity * 5 + 1000; i++)
+        {
+            ParameterEvent^ parameterEvent = gcnew ParameterEvent();
+            parameterEvent->ParameterId = 6; // i % 10;
+            parameterEvent->Time = DateTime::Now; // currentTime;
+            parameterEvent->Value = 0.011F;
+            parameterEvent->Status = 11;
+            Events->Add(parameterEvent);
+        }
+        for (; i < quantity; i++)
+        {
+            ParameterEvent^ parameterEvent = gcnew ParameterEvent();
+            parameterEvent->ParameterId = 7; // i % 10;
+            parameterEvent->Time = DateTime::Now; // currentTime;
+            parameterEvent->Value = 0.011F;
+            parameterEvent->Status = 11;
+            Events->Add(parameterEvent);
+        }
+    }
+*/
+    EventsBulk(int quantity) {
 
         DateTime currentTime = DateTime::Now;
         Events = gcnew List< ParameterEvent^ >(quantity);
@@ -80,10 +135,11 @@ public:
 /// Метод для вывода в консоль длины очереди
 /// <param name="queueLen">Количество событий в очереди</param>
 /// </summary>
-void logQueueLen (unsigned int queueLen)
+void logQueueLen (unsigned int preparedQueueLen, unsigned int storingQueueLen, unsigned int errorsQuantity )
 {
     Console::Write( DateTime::Now.ToString( "HH:mm:ss.fff " ) );
-    Console::WriteLine( "Queue length is " + queueLen );
+    // Console::WriteLine( "Queue length is " + (preparedQueueLen + storingQueueLen - errorsQuantity));
+    Console::WriteLine( "Prepared events : " + preparedQueueLen + ", storing events : " + storingQueueLen + ", errors : " + errorsQuantity );
 }
 
 /// <summary>
@@ -146,16 +202,16 @@ int main()
             cout << "Database created" << endl;
 
         // Заполнение таблицы параметров
-        for (int i = 1; i <= 1000; i++) 
-        {
-            Parameter^ parameter = gcnew Parameter();
-            parameter->Name = "parameter " + i;
-            parameter->Comment = "Комментарий к параметру";
-            parameter->Units = "inches, дюймы по-нашему";
-            parameter->Source = "Откуда ни возьмись";
-            context->Parameters->Add(parameter);
-        }
-        context->SaveChanges();
+        //for (int i = 1; i <= 1000; i++) 
+        //{
+        //    Parameter^ parameter = gcnew Parameter();
+        //    parameter->Name = "parameter " + i;
+        //    parameter->Comment = "Комментарий к параметру";
+        //    parameter->Units = "inches, дюймы по-нашему";
+        //    parameter->Source = "Откуда ни возьмись";
+        //    context->Parameters->Add(parameter);
+        //}
+        //context->SaveChanges();
 
         //int startEventId = context->LastParameterEventId.HasValue ? context->LastParameterEventId.Value : -1;
         //Console::Write(DateTime::Now.ToString("HH:mm:ss.fff "));
@@ -198,6 +254,8 @@ int main()
 
                 Thread::Sleep(50);
                 counter2++;
+
+                // break;
 
             } while ((DateTime::Now - startTime).TotalSeconds < 60);
             // До тех пор, пока не пройдет 60 секунд
