@@ -40,11 +40,11 @@ namespace PostgreSqlDataAccess
                 int count = 0;
                 foreach (string tableName in tableNames)
                 {
-                    var quantityQueryResult = Database.SqlQuery( typeof(int), "select max(event_id) - min(event_id) + 1 from " + tableName + ";" );
-                    foreach (int quantity in quantityQueryResult)
+                    var quantityQueryResult = Database.SqlQuery( typeof( int? ), "select max(event_id) - min(event_id) + 1 from " + tableName + ";" );
+                    foreach (int? quantity in quantityQueryResult )
                     {
-                        count += quantity;
-                        // Console.WriteLine( tableName + ": " + quantity );
+                        if (quantity.HasValue)
+                            count += quantity.Value;
                     }
                 }
                 return count;
